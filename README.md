@@ -74,6 +74,9 @@ firefighting operations.
 
 ## Methods
 
+> Some of the data are not public, so the code is displayed but not
+> executed. Figures are from the published analysis.
+
 ``` r
 library(sf)           # vector data: st_read, st_transform, st_coordinates
 library(terra)        # rasters: rast, crop, mask, aggregate, extract
@@ -96,9 +99,6 @@ library(shapviz)      # shapviz, sv_importance, sv_dependence
 ```
 
 ### 1. Extracting and compiling data
-
-> Some of the data are not public, so the code is displayed but not
-> executed. Figures are from the published analysis.
 
 Burn severity was sampled on a regular 90 m grid (the center pixel of
 each 90 × 90 m block), and each predictor was extracted at the sample
@@ -237,12 +237,13 @@ correlated with RBR was removed. The largest remaining correlation was
 # Iteratively compare predictors and remove highly correlated
 cor_df <- full_df %>%
   dplyr::select(-c(X, Y, Treatment_type))
+# RBR must be the first column: row/column 1 of the correlation matrix is used as the response
 
 fullcor = cor(cor_df, method = "spearman")
-corwithrdnbr = abs(fullcor[-1,1])
+corwithrbr = abs(fullcor[-1,1]) 
 predcor = abs(fullcor[-1,-1])
 
-pred_nms <- names(corwithrdnbr)
+pred_nms <- names(corwithrbr)
 
 for (i in 1:nrow(predcor)) {
   predcor[i,i] = 0
@@ -253,9 +254,9 @@ while (max(predcor)>=0.6) {
   w = which(predcor==max(predcor))[1]-1
   col = (w %% ncol(predcor))+1
   row = (w %/% ncol(predcor))+1
-  toremove = ifelse(corwithrdnbr[col]>corwithrdnbr[row],row,col)
+  toremove = ifelse(corwithrbr[col]>corwithrbr[row],row,col)
   removed_vars = c(removed_vars,colnames(predcor)[toremove])
-  corwithrdnbr = corwithrdnbr[-toremove]
+  corwithrbr = corwithrbr[-toremove]
   predcor = predcor[-toremove,-toremove]
 }
 
