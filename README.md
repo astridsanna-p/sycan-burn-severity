@@ -1,5 +1,4 @@
-Fuel treatments and burn severity near Sycan Marsh (2021 Bootleg Fire):
-Random Forest and SHAP analysis
+Assessing fuel treatments and burn severity using global and local analyses
 ================
 
 **Astrid Sanna** · <astridsannawork@gmail.com>
