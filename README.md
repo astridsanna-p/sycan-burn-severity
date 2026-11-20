@@ -2,7 +2,7 @@ Fuel treatments and burn severity near Sycan Marsh (2021 Bootleg Fire):
 Random Forest and SHAP analysis
 ================
 
-**Astrid Sanna** · <astrid.sanna.work@gmail.com>
+**Astrid Sanna** · <astridsannawork@gmail.com>
 
 Code and summary for [Sanna, A., et al. (2025). *Fire Ecology*, 21:
 44.](https://link.springer.com/article/10.1186/s42408-025-00387-y)
