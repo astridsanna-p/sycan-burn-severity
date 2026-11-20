@@ -688,7 +688,7 @@ and supported in part by the USDA Forest Service.
 Thanks to my co-authors Caden Chamberlain, Susan J. Prichard, C. Alina
 Cansler, Andrew T. Hudak, Craig Bienz, L. Monika Moskal and Van R. Kane.
 Thanks also to K. Sauerbrey for critical information on fire and fuel
-management, N. Povak for statistical insights, Alexander Howe for
+management, N. Povak for statistical insights, A. Howe for
 assistance in computing burn severity data, L. van Wagtendonk for
 ecological insights, and R. Haugo for support of this work.
 
