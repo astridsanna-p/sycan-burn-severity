@@ -1,11 +1,12 @@
 ---
 title: "Fuel treatments and burn severity near Sycan Marsh (2021 Bootleg Fire): Random Forest and SHAP analysis"
 output: github_document
+knit: (function(input, ...) rmarkdown::render(input, output_file = "README.md"))
 ---
 
-**Astrid Sanna** · [astridsannawork@gmail.com](mailto:astrid.sanna.work@gmail.com)
+**Astrid Sanna** · [astridsannawork@gmail.com](mailto:astridsannawork@gmail.com)
 
-Code and summary for [Sanna, A., et al. (2025). *Fire Ecology*, 21: 44.](https://link.springer.com/article/10.1186/s42408-025-00387-y) Listen to the [podcast](https://fireecology.org/feco-podcast/ep69) for a deeper dive into this study.
+Code and summary for [Sanna, A., et al. (2025). *Fire Ecology*, 21, 44.](https://link.springer.com/article/10.1186/s42408-025-00387-y) Listen to the [podcast](https://fireecology.org/feco-podcast/ep69) for a deeper dive into this study.
 
 ```{r setup, include = FALSE}
 # The data are not public, so the code is displayed but not executed.
@@ -44,7 +45,7 @@ The study area is the footprint of a 2018 LiDAR acquisition near Sycan Marsh (Fr
 <img src="figures/Astrid_Sanna_Fire_Ecology_Figure_1.png" width="80%">
 
 ## Methods
-> Some of the data are not public, so the code is displayed but not executed. Figures are from the published analysis.
+
 ```{r libraries}
 library(sf)           # vector data: st_read, st_transform, st_coordinates
 library(terra)        # rasters: rast, crop, mask, aggregate, extract
@@ -67,6 +68,8 @@ library(shapviz)      # shapviz, sv_importance, sv_dependence
 ```
 
 ### 1. Extracting and compiling data
+
+> Some of the data are not public, so the code is displayed but not executed. Figures are from the published analysis.
 
 Burn severity was sampled on a regular 90 m grid (the center pixel of each 90 × 90 m block), and each predictor was extracted at the sample points. Points with less than 10% canopy cover and incomplete records were removed, leaving 1,846 points.
 
@@ -157,7 +160,9 @@ dim(full_df)
 
 # Removing all rows with NA
 full_df <- full_df[complete.cases(full_df),]
-dim(full_df) # 1846  
+dim(full_df) # 1846 
+
+# Create treatment labels for plots (not used as a model predictor)
 full_df <- full_df %>%
   mutate(Treatment_type = case_when(
     Sycan_treatments == 0 ~ "Untreated",
@@ -169,6 +174,7 @@ full_df <- full_df %>%
 # Edits: 
 # - simplify Sycan treatments to treatment/no-treatment and Rx/no-Rx
 # - simplify EVT to dominant/non-dominant vegetation
+
 full_df <- full_df %>%
   mutate(Fuel_treatments = Sycan_treatments,
          Rx = Sycan_treatments,
@@ -194,75 +200,48 @@ dim(full_df)
 For each pair of predictors with |Spearman ρ| ≥ 0.6, the one less correlated with RBR was removed. The largest remaining correlation was 0.59.
 
 ```{r collinearity}
-# * Reduce datasets based on collinearity and relationship with RBR ----
-# Initialize a vector to keep track of removed variables
-removed_vars <- list()
-# save full_df variable names as pred_nms excluding one-hot-encoded treat., 
-# Treatment_type, EVT_PP, and coordinates variables 
-names(full_df) <- make.names(names(full_df)) # R friendly names 
-pred_nms <- full_df %>%
-  dplyr::select(- X, - Y, -Treatment_type, -Sycan_firefighting_opt_rast) %>%
-  colnames()
-print(pred_nms)
-# Create a vector of variables to check for high correlation. Initially, it includes all predictor names.
-vars_to_check <- pred_nms
+# Iteratively compare predictors and remove highly correlated
+cor_df <- full_df %>%
+  dplyr::select(-c(X, Y, Treatment_type))
 
-# Loop until all variables have been checked for high correlation
-while (length(vars_to_check) > 0) {
-  this_met <- vars_to_check[1]                   # Start with the first variable
-  vars_to_check <- vars_to_check[-1]             # Remove the variable from the list, as it's being checked now
-  
-  # Loop through the remaining variables to check correlation against the current variable (this_met)
-  for (j in vars_to_check) {
-    sec_met <- j                                 # Set the second variable for comparison
-    # Filter out rows with missing values for both columns and target 'RBR'
-    complete_rows <- complete.cases(full_df[, c(this_met, sec_met, "RBR")])
-    
-    # Only calculate correlation if there are rows without NA values
-    if (length(complete_rows) > 0) {
-      # Calculate Spearman correlation between the two variables
-      this_cor <- abs(cor(full_df[complete_rows, this_met], full_df[complete_rows, sec_met], method = "spearman"))
-      
-      # If the correlation is above the threshold (0.6 in this case)  
-      if (this_cor >= 0.6) {
-        # Calculate correlation of each variable with the target 'RBR'
-        cor_one <- abs(cor(full_df[complete_rows, this_met], full_df[complete_rows, "RBR"], method = "spearman"))
-        cor_two <- abs(cor(full_df[complete_rows, sec_met], full_df[complete_rows, "RBR"], method = "spearman"))
-        
-        # Decide which variable to remove based on their correlation with the target 'RBR'
-        if (cor_one > cor_two) {
-          removed_vars <- c(removed_vars, sec_met)  # Remove the second variable
-          cat("Variable removed:", sec_met, "\n")
-          # Also remove the second variable from the list of variables yet to check
-          vars_to_check <- vars_to_check[vars_to_check != sec_met]
-        } else {
-          removed_vars <- c(removed_vars, this_met) # Remove the first variable
-          cat("Variable removed:", this_met, "\n")
-          break
-        }
-      }
-    }
-  }
+fullcor = cor(cor_df, method = "spearman")
+corwithrdnbr = abs(fullcor[-1,1])
+predcor = abs(fullcor[-1,-1])
+
+pred_nms <- names(corwithrdnbr)
+
+for (i in 1:nrow(predcor)) {
+  predcor[i,i] = 0
 }
 
-# remove the "removed_vars" from the full_df 
-removed_vars <- unlist(unique(removed_vars))
-length(removed_vars) 
-kept_vars <- pred_nms[!pred_nms %in% removed_vars]
-length(kept_vars)
-print(kept_vars)
+removed_vars = c()
+while (max(predcor)>=0.6) {
+  w = which(predcor==max(predcor))[1]-1
+  col = (w %% ncol(predcor))+1
+  row = (w %/% ncol(predcor))+1
+  toremove = ifelse(corwithrdnbr[col]>corwithrdnbr[row],row,col)
+  removed_vars = c(removed_vars,colnames(predcor)[toremove])
+  corwithrdnbr = corwithrdnbr[-toremove]
+  predcor = predcor[-toremove,-toremove]
+}
 
-# new dataframe with reduced set of predictors
-slim_df <- dplyr::select(full_df, !c(all_of(removed_vars))) 
+# Lists of removed and kept variables
+removed_vars <- unlist(unique(removed_vars)); removed_vars
+kept_vars <- pred_nms[!grepl(paste0(removed_vars, collapse = "|"), pred_nms)]; kept_vars
+
+# Make new dataframe with reduced set of predictors
+slim_df <- dplyr::select(full_df, !c(all_of(removed_vars)))
+print(colnames(slim_df))
 dim(slim_df) 
+summary(slim_df)
 
-# remove treatment type var from slim_df since categorical variables can't be used in later local importance modeling 
+# Remove treatment type var from slim_df since categorical variables can't be used in later local importance modeling 
 slim_df <- slim_df %>%
   dplyr::select(-Treatment_type)
 dim(slim_df) # 1846   23
 slim_df_orig <- slim_df # save original slim_df
 
-# check correlations as test
+# Check correlations as test
 cors <- list()
 
 slim_df <- slim_df %>%
@@ -281,16 +260,9 @@ for (i in 2:ncol(slim_df)) {
 cors <- abs(unlist(cors))
 max(cors) # 0.5949759, good!
 
-# Restore original slim_df
+# Restore original slim_df to include coordinates (X,Y)
 slim_df <- slim_df_orig
-```
 
-### 3. Feature selection and random forest
-
-Predictors were selected with recursive feature elimination (repeated cross-validation). A random forest (`ranger`) was then tuned with 10-fold cross-validation over `mtry` and `min_n`.
-
-```{r model}
-set.seed(1)
 # Rename variables 
 slim_df_new_names <- slim_df %>%
   rename(RBR = RBR,
@@ -298,7 +270,7 @@ slim_df_new_names <- slim_df %>%
          X = X,
          Distance_to_Streams_Wetlands = distance_to_streams_wetlands, 
          AET_1981_2010 = 'aet_1981-2010', 
-         Ecostress_ESI = ecostress_esi,
+         Evaporative_Stress_Index = ecostress_esi,
          Max_Temp = tmmx, 
          Canopy_Rumple = canopy_rumple_30METERS,
          Canopy_Cover = FIRST_RETURNS_all_cover_above2_30METERS,
@@ -316,24 +288,20 @@ slim_df_new_names <- slim_df %>%
          Firefighting = Sycan_firefighting_opt_rast,
          Mechanical_Thinning = Tx, 
          Dominant_Vegetation = EVT_PP)
+
+# Check
 colnames(slim_df_new_names)
 slim_df <- slim_df_new_names
-slim_df_v23 <- slim_df
+```
 
-# Classify severity for stratified sampling
-slim_df$RBR_cls <- findInterval(slim_df$RBR, c(-Inf, 136, 300, Inf)) # example for RBR table 7 (GEE derived RBR, excludes offset), Parks et al 2018
+### 3. Final feature selection 
+To further reduce the pool of variables, predictors were selected with recursive feature elimination (`caret`, random forest, 10-fold cross-validation repeated 5 times, optimizing R²), which repeatedly fits the model and removes the least important predictors. RFE retained 16 predictors. Mechanical thinning was not selected, but it was added back as a variable of interest, for a final set of 17 predictors.
 
-slim_df <- slim_df %>%
-  mutate(Unique_ID = paste(row_number(), RBR_cls, sep = "_"))
-dim(slim_df) 
-
-# Define initial RF model 
+```{r RFE}
+# Setup the control using repeated cv
 set.seed(1)
 rfe_df <- slim_df %>%
-  dplyr::select(-c(X, Y, RBR_cls, Unique_ID))
-
-# RFE (Recursive Feature Elimination) with default gini impurity using caret 
-# Setup the control using repeated cv
+  dplyr::select(-c(X, Y))
 control <- rfeControl(functions = rfFuncs, 
                       method = "repeatedcv", 
                       repeats = 5,
@@ -353,22 +321,60 @@ selected_vars <- predictors(results)
 print(selected_vars) # Mechanical_Thinning was discarded. 
 
 # Add Mechanical_Thinning back to the data frame for the purpose of this study.
-Tx_df <- slim_df_v23 %>%
+Tx_df <- slim_df %>%
   dplyr::select(Mechanical_Thinning)
 
 slim_df <- slim_df %>%
-  dplyr::select(RBR, X, Y, RBR_cls, Unique_ID, all_of(selected_vars)) %>%
-  rename(Evaporative_Stress_Index = Ecostress_ESI) %>%
+  dplyr::select(RBR, X, Y, all_of(selected_vars)) %>%
   cbind(Tx_df)
 
 colnames(slim_df)
+```
 
+**Table 2.** Subset of predictors included in the final Random Forest model. The data include restricted LiDAR and management layers and are not publicly available.
+
+| Predictors | Resolution (m) | Unit | Source/software |
+|---|---|---|---|
+| **Management** | | | |
+| &nbsp;&nbsp;&nbsp;&nbsp;Broadcast burning | 10 | Unitless | TNC; IFTDSS |
+| &nbsp;&nbsp;&nbsp;&nbsp;Mechanical thinning | 10 | Unitless | TNC; IFTDSS |
+| &nbsp;&nbsp;&nbsp;&nbsp;Firefighting | 10 | Unitless | Survey |
+| **Forest structure** | | | |
+| &nbsp;&nbsp;&nbsp;&nbsp;Canopy cover | 30 | % | FUSION |
+| &nbsp;&nbsp;&nbsp;&nbsp;Canopy rumple | 30 | Unitless | FUSION |
+| **Topography** | | | |
+| &nbsp;&nbsp;&nbsp;&nbsp;Topographic position index | 15 | Unitless | FUSION |
+| &nbsp;&nbsp;&nbsp;&nbsp;Aspect | 15 | Degrees AZ | FUSION |
+| &nbsp;&nbsp;&nbsp;&nbsp;Slope | 15 | Degrees | FUSION |
+| &nbsp;&nbsp;&nbsp;&nbsp;Solar radiation index | 15 | Unitless | FUSION |
+| **Weather** | | | |
+| &nbsp;&nbsp;&nbsp;&nbsp;Maximum temperature | 4000 | Kelvin | Abatzoglou 2013; NIROPS |
+| &nbsp;&nbsp;&nbsp;&nbsp;Northsouthness maximum wind speed | 90 | Cosine transformed radians | WindNinja |
+| **Vegetation** | | | |
+| &nbsp;&nbsp;&nbsp;&nbsp;Evaporative stress index | 70 | Unitless | Fisher 2018 |
+| **Climate** | | | |
+| &nbsp;&nbsp;&nbsp;&nbsp;Actual Evapotranspiration 1981–2010 | 90 | mm | Cansler et al. 2022 (Appendix B) |
+| &nbsp;&nbsp;&nbsp;&nbsp;Snow cover frequency | 500 | % | Crumley et al. 2020 |
+| &nbsp;&nbsp;&nbsp;&nbsp;Distance to streams and wetlands | 10 | m | ODSL; ODFW |
+
+### 4. Random Forest
+A random forest (`ranger`, 500 trees) was tuned with 10-fold cross-validation over `mtry` (the number of predictors randomly considered at each split) and `min_n` (the minimum number of observations in a node to split it further), testing a 10 × 10 grid of values. The best model used `mtry` = 4 and `min_n` = 5. The model was fit to all samples for explanation (R² = 0.94, RMSE = 31.8, as reported in the paper). Out-of-bag R² = 0.68 shows the learned patterns hold for samples withheld from each tree.
+
+```{r Random Forest}
 # Model specs (explained below):
 # tune_spec is my model specification, which describes the type of model I want to fit and which hyperparameters I want to tune.
 # rf_grid provides the specific values of those hyperparameters that will be tried out during the tuning process.
 # tune_wf combines my data preprocessing steps and my model into a workflow that can be fit to data.
 
 set.seed(1)
+
+# Classify severity for stratified sampling
+slim_df$RBR_cls <- findInterval(slim_df$RBR, c(-Inf, 136, 300, Inf)) # example for RBR table 7 (GEE derived RBR, excludes offset), Parks et al 2018
+
+slim_df <- slim_df %>%
+  mutate(Unique_ID = paste(row_number(), RBR_cls, sep = "_"))
+dim(slim_df) 
+
 df_RF <- slim_df
 
 # Prepare recipe 
@@ -385,7 +391,6 @@ tune_spec <- rand_forest(mtry = tune(), min_n = tune()) %>% # autopilot model
 trees_folds <- vfold_cv(df_RF, v = 10) # data divided in 10 equal groups, 9 used for training, 1 for testing. each time a different group is used for testing and then the performance is averaged 
 
 # Set up grid for hyper-parameter tuning
-set.seed(1)
 # Adjust the mtry range to cover all predictors and set min_n starting from 5 to avoid potential overfitting.
 rf_grid <- grid_regular(mtry(range = c(1, ncol(slim_df)-5)), min_n(range = c(5,40)), levels = 10) 
 # removed 5 non-predictors; levels = 10: this tells the function to create 10 evenly spaced points within each of these ranges. E.g. 10 values for mtry
@@ -408,7 +413,6 @@ class(model) # ranger
 
 # Variable importance from the final model
 (init_imps <- model %>% vip(num_features = ncol(df_RF))) 
-slim_df_v24 <- slim_df
 
 # Model performance 
 my_explainer <- explain_tidymodels(final_worflow, data = dplyr::select(df_RF,  -c(RBR)), #
@@ -432,18 +436,17 @@ model_perf <- DALEX::model_performance(my_explainer); model_perf # train model
 # rmse       : 31.84555 
 # r2         : 0.9383454 
 # mad        : 15.99328
-```
 
-The model was fit to all samples for explanation (R² = 0.94, RMSE = 31.8, as reported in the paper). Out-of-bag R² = 0.68 shows the learned patterns hold for samples withheld from each tree.
-
-### 4. Model fit and residual spatial autocorrelation
-
-A Moran's I correlogram of the residuals (90 m lags) checked that spatial autocorrelation was not inflating model performance.
-
-```{r residuals}
 # Check model diagnostics 
 md <- model_diagnostics(my_explainer)
+```
 
+
+### 5. Model fit and residual spatial autocorrelation
+
+Model fit was assessed by comparing observed and predicted RBR. Because nearby observations tend to have similar burn severity, a Moran's I correlogram of the model residuals (90 m lags) checked that spatial autocorrelation was not inflating model performance. Moran's I ranged between 0.0 and 0.1, indicating that the residuals were spatially independent.
+
+```{r residuals}
 # Model fit
 slim_df_yhat <- as.data.frame(md) %>%
   dplyr::select(Unique_ID, X,Y, y, y_hat, residuals) %>%
@@ -459,8 +462,8 @@ plot_fit <- ggplot(slim_df_yhat, aes(x = y, y = y_hat)) +
   labs(x = "Observed RBR", y = "Predicted RBR", title = "Model fit") +
   theme_bw() +
   theme(
-    text = element_text(size = 8),  # Increase the text size for the entire plot
-    axis.title = element_text(size = 10))  # Specifically increase the axis label size
+    text = element_text(size = 8),  
+    axis.title = element_text(size = 10))  
 print(plot_fit)
 
 # Residuals spatial autocorrelation
@@ -502,16 +505,16 @@ print(morans_rsdls_fig)
 
 *Model fit and residual spatial autocorrelation (Moran's I)*
 
-### 5. Interpreting the model with SHAP
 
-Once the model was judged adequate, `treeshap` gave global importance (mean |SHAP|), local effects for each point, and interactions between predictors.
+### 6. Interpreting the model with SHAP
+
+Once the model was judged adequate, SHAP values were calculated with `treeshap` for all 1,846 observations. A SHAP value is the contribution of a predictor to the prediction at one location, relative to the average prediction: positive values increase predicted burn severity, negative values decrease it. Results were visualized with `shapviz` as global importance (mean |SHAP|), local effects for each observation, and interactions between predictors.
 
 ```{r shap}
 # Run shap analysis
-model <- readRDS("my_model_v24.rds") 
-model_unified <- ranger.unify(model, slim_df_v24) 
+model_unified <- ranger.unify(model, slim_df) 
 model_unified_df <- model_unified$model # all model parts  
-treeshap_res <- treeshap(model_unified, slim_df_v24, interactions = T)  
+treeshap_res <- treeshap(model_unified, slim_df, interactions = T)  
 
 # Prepare data for plots
 x <- colnames(treeshap_res$shaps)
@@ -523,7 +526,7 @@ dim(sv)
 bees_p <- sv_importance(sv, max_display = 18L, kind = "beeswarm", 
                         alpha = 0.6, size = 0.2) +
   theme_bw() +
-  theme(axis.text.y = element_text(size = 9), #element_blank(), color = ("black")
+  theme(axis.text.y = element_text(size = 9), 
         axis.ticks.y = element_blank(), 
         axis.text.x = element_text(size = 9),
         axis.title.x = element_text(size = 9),
@@ -533,19 +536,19 @@ bees_p <- sv_importance(sv, max_display = 18L, kind = "beeswarm",
                         guide = guide_colourbar(
                           barwidth = unit(0.3, "cm"), 
                           barheight = unit(2, "cm"),
-                          label = FALSE,  # Draw an upper limit
+                          label = FALSE,  
                           ticks = FALSE ,
-                          title = "Predictor\nvalue"))  # Draw a lower limit
+                          title = "Predictor\nvalue"))  
 bees_p <- bees_p +
   theme(legend.position = c(0.8, 0.2), # Adjust these values as needed
         legend.margin = margin(t = 0, r = 0, b = 0.0, l = 0, unit = "pt"),
         legend.box.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"),
-        legend.spacing.x = unit(0, "cm"), # Adjust spacing between legend and plot
+        legend.spacing.x = unit(0, "cm"), 
         legend.spacing.y = unit(0, "cm"),
         legend.title = element_text(size = 8, margin = margin(b = 2, unit = "pt"))) 
 bees_p <- bees_p +
   theme(axis.text.y = element_text(size = 9, hjust = 0.5, 
-                                   margin = margin(r = 7, unit = "pt"))) # Attempt to center y-axis text
+                                   margin = margin(r = 7, unit = "pt"))) 
 # Print the plot
 print(bees_p)
 
@@ -556,7 +559,6 @@ bar_p <- sv_importance(sv, kind = "bar", max_display = 18L, alpha = 0.9) +
         axis.ticks.y = element_blank(),
         axis.text.x = element_text(size = 8),
         axis.title.x = element_text(size = 8)
-        # legend.title = element_text(size = 8)
         )
 # Print the plot
 print(bar_p)
@@ -596,14 +598,13 @@ Canopy cover was the most important direct measure of forest structure influenci
 
 *Interaction between canopy cover and broadcast burning (Rx).*
 
-## Paper and data
-
-[Sanna, A., et al. (2025). Assessing fuel treatments and burn severity using global and local analyses. *Fire Ecology*, 21:44.](https://link.springer.com/article/10.1186/s42408-025-00387-y)
-
-The data include restricted LiDAR and management layers and are not publicly available.
 
 ## Acknowledgments
 
 This work was funded and supported by The Nature Conservancy (ID: WA-G-220211-013) and the Joint Fire Science Program (ID: 23-2-02-15), and supported in part by the USDA Forest Service.
 
 Thanks to my co-authors Caden Chamberlain, Susan J. Prichard, C. Alina Cansler, Andrew T. Hudak, Craig Bienz, L. Monika Moskal and Van R. Kane. Thanks also to K. Sauerbrey for critical information on fire and fuel management, N. Povak for statistical insights, Alexander Howe for assistance in computing burn severity data, L. van Wagtendonk for ecological insights, and R. Haugo for support of this work.
+
+**Please cite this work as:**
+
+Sanna, A., Chamberlain, C., Prichard, S.J. *et al.* Assessing fuel treatments and burn severity using global and local analyses. *Fire Ecology* 21, 44 (2025). https://doi.org/10.1186/s42408-025-00387-y 
