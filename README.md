@@ -650,7 +650,7 @@ point is one sample location, colored by predictor value.*
 
 Canopy cover was the most important direct measure of forest structure
 influencing burn severity. Canopy cover above 40% was associated with
-increasing predicted burn severity, but only where broadcast burning was
+increasing predicted burn severity, but only where broadcast burning (Rx) was
 absent. Where Rx was applied, SHAP interaction values between canopy
 cover and Rx stayed close to zero across all canopy cover levels. This
 suggests that burn severity was driven by surface fuels, and that
@@ -659,7 +659,7 @@ cover.
 
 <img src="figures/Astrid_Sanna_Fire_Ecology_Figure_6.png" width="50%">
 
-*Interaction between canopy cover and broadcast burning.*
+*Interaction between canopy cover and broadcast burning (Rx).*
 
 ## Paper and data
 
