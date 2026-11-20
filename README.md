@@ -3,7 +3,7 @@ Assessing fuel treatments and burn severity using global and local analyses
 
 **Astrid Sanna** · <astridsannawork@gmail.com>
 
-Code and summary for [Sanna, A., et al. (2025). *Fire Ecology*, 21,
+Code and summary for [Sanna et al. (2025). *Fire Ecology*, 21,
 44.](https://link.springer.com/article/10.1186/s42408-025-00387-y)
 Listen to the [podcast](https://fireecology.org/feco-podcast/ep69) for a
 deeper dive into this study.
